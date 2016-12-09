@@ -62,14 +62,18 @@ def submit_job():
     return json.dumps({'success': True, 'job_id': _job.get('job_id')})
 
 
-@app.route('/get_job')
+@app.route('/get_job', methods=['POST'])
 def get_job():
     """
     Accessed by worker processes
     :return: bytes file
     """
 
-    worker_name = request.args.get('worker_name')
+    data = request.get_json()
+    worker_name = data.get('worker_name')
+    status_update = data.get('status_update')
+
+    print('Update from {} is: \n{}'.format(worker_name, status_update))
 
     # Tell worker to shutdown if signal indicates
     if taskqueue.shutdown:

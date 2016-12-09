@@ -1,5 +1,6 @@
 
 import requests
+import random
 import time
 
 class JobConnection(object):
@@ -62,6 +63,7 @@ if __name__ == '__main__':
 
     @distribute
     def adder(x):
+        time.sleep(random.random())
         return x + 3
 
     result = map(adder, [1, 2, 3, 4, 5, 6])

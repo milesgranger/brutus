@@ -42,7 +42,6 @@ class Worker(object):
         self.max_queue_size = max_queue_size
         self.n_procs = n_procs
         self.worker_name = worker_name
-        #self.process_pool = ProcessPoolExecutor(n_procs)
 
 
     @property
@@ -71,8 +70,9 @@ class Worker(object):
 
                 # Get a job package from scheduler...
                 start = time.perf_counter()
-                package = requests.get('{}/get_job'.format(self.scheduler_url),
-                                       params={'worker_name': self.worker_name})
+                package = requests.post('{}/get_job'.format(self.scheduler_url),
+                                        json={'worker_name': self.worker_name,
+                                              'status_update': self.job_status})
                 print('WORKER: request time: {} - package: {}'.format(round(time.perf_counter() - start, 6), package))
 
                 # Check for job in package
@@ -86,19 +86,23 @@ class Worker(object):
 
                 # We have a job! Submit it to ProcessPoolExecutor and store future in pending_jobs list.
                 else:
-                    
-                    exc.submit(self.process_job, package=package)
+                    _package = dill.loads(package.content)
+                    job_id = _package.get('job_id')
+                    future = exc.submit(self.process_job, package=package)
+                    self.futures.append((job_id, future))
 
         return
 
     def process_job(self, package):
+        """Loads and executes the function given the package"""
+
         # Load bytes into pyobj...
         package = dill.loads(package.content)
-        job_id = package.get('job_id')
         func = package.get('func')
         args = package.get('args')
         kwargs = package.get('kwargs')
 
+        # Run the function
         result = func(*args, **kwargs)
         return result
 
@@ -127,15 +131,6 @@ class Worker(object):
                                                                                          self.n_running,
                                                                                          self.n_complete))
 
-
-    def still_working(self):
-        """
-        Checks scheduler to see if work status from scheduler is still running
-        returning False kills the worker process, otherwise sleeps for .check_rate time.
-        :return: True or False
-        """
-        running = requests.get('http://localhost:5555/status').json()
-        return True if running.get('status', 'running') == 'running' else False
 
 
 if __name__ == '__main__':
