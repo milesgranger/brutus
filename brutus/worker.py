@@ -19,6 +19,9 @@ class Worker(object):
     n_complete = 0
     n_pending = 0
 
+    # Job tracker, list of dicts containing job_id and status
+    job_status = []
+
     def __init__(self, address, port, check_rate=0.25, max_queue_size=50, n_procs=2, worker_name='brutus_jr'):
         """
         :param address:         str: Scheduler http/tcp address
@@ -39,6 +42,7 @@ class Worker(object):
         self.max_queue_size = max_queue_size
         self.n_procs = n_procs
         self.worker_name = worker_name
+        #self.process_pool = ProcessPoolExecutor(n_procs)
 
 
     @property
@@ -52,7 +56,7 @@ class Worker(object):
         """
         print('Worker "{}" starting with {} processes!'.format(self.worker_name, self.n_procs))
 
-        with ProcessPoolExecutor(max_workers=self.n_procs) as exc:
+        with ProcessPoolExecutor(3) as exc:
             while True:
 
                 # update pending, running and completed job counts
@@ -67,7 +71,8 @@ class Worker(object):
 
                 # Get a job package from scheduler...
                 start = time.perf_counter()
-                package = requests.get('{}/get_job'.format(self.scheduler_url))
+                package = requests.get('{}/get_job'.format(self.scheduler_url),
+                                       params={'worker_name': self.worker_name})
                 print('WORKER: request time: {} - package: {}'.format(round(time.perf_counter() - start, 6), package))
 
                 # Check for job in package
@@ -81,54 +86,42 @@ class Worker(object):
 
                 # We have a job! Submit it to ProcessPoolExecutor and store future in pending_jobs list.
                 else:
-                    f = exc.submit(self.process_job, package=package)
-                    self.futures.append(f)
+                    
+                    exc.submit(self.process_job, package=package)
 
         return
 
-
     def process_job(self, package):
-        """
-        Processes the job received
-        :param package - dict: {'job-id': <str_id>,
-                                'func': <bytes as io.BytesIO which comes from dill.dumps(func)>,
-                                'args': <tuple of arguments to be passed to func as *args>,
-                                'kwargs': <dict of kwargs such as {'arg1': val1},
-                                }
-        :type dict
-        :returns dict - {'job_id': <job_id>,
-                         'result': <function_result>}
-        """
-
         # Load bytes into pyobj...
         package = dill.loads(package.content)
-
-        # Get attributes, such as job id, func, etc.
         job_id = package.get('job_id')
         func = package.get('func')
         args = package.get('args')
         kwargs = package.get('kwargs')
 
-        # Process the function with given info.
-        print('WORKER: Starting job: ', job_id)
-        time.sleep(random.random())
         result = func(*args, **kwargs)
-        print('WORKER: Finished job: {} with result: {}'.format(job_id, result))
-        return {'job_id': job_id, 'result': result}
+        return result
 
 
     def update_job_status_counts(self):
         """
-        Updates job status numbers
+        Updates job status numbers and job_status list of dicts
         """
+        self.job_status = []
         self.n_pending, self.n_running, self.n_complete = 0, 0, 0
-        for future in self.futures:
+        for job_id, future in self.futures:
             if future.done():
+                status = {'status': 'complete_on_worker'}
                 self.n_complete += 1
             elif future.running():
+                status = {'status': 'running_on_worker'}
                 self.n_running += 1
             else:
+                status = {'status': 'pending_on_worker'}
                 self.n_pending += 1
+
+            status.update({'job_id': job_id})
+            self.job_status.append(status)
 
         print('WORKER: Job Status --> Pending: {} - Running: {} - Completed - {}'.format(self.n_pending,
                                                                                          self.n_running,
@@ -146,6 +139,6 @@ class Worker(object):
 
 
 if __name__ == '__main__':
-    worker = Worker(address='localhost', port='5555')
+    worker = Worker(address='localhost', port='4541')
     worker.work()
 
