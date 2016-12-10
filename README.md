@@ -7,12 +7,11 @@ It's simple and it's powerful.
 
 Under development.
 
-
 ---
 
 ### Intent
 
-Uses a central Flask/Gevent Server which is contacted by hungry worker processes looking for work. 
+Uses a central Flask/Gevent Server which is contacted by hungry worker processes looking for jobs. 
 
 Goal:
 
