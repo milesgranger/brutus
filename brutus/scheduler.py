@@ -57,6 +57,11 @@ class Scheduler(object):
             return json.dumps({'success': False})
 
 
+        @app.route('/workers')
+        def workers():
+            return json.dumps({'workers': middleman.workers})
+
+
         @app.route('/register', methods=['POST'])
         def register():
             """Workers register here"""
@@ -103,15 +108,14 @@ class Scheduler(object):
             middleman.shutdown = True
             return 'shutting down cluster.'
 
-
-        print('app function starting..')
+        # Safe to use self attributes now
         print('Starting scheduler on port {}'.format(self.port))
         self.http_server = WSGIServer(('', self.port), application=app)
         self.http_server.serve_forever()
 
 
     def start_scheduler_server(self):
-        exc = ThreadPoolExecutor(2)
+        exc = ProcessPoolExecutor(2)
         self.server_process = exc.submit(self.scheduler_server)
         return True
 
@@ -132,6 +136,9 @@ class Scheduler(object):
                 print('Exiting Scheduler loop')
                 break
 
+            time.sleep(0.1)
+
+        # Stop the scheduler server.
         self.http_server.stop()
         print('Done.')
 
@@ -141,15 +148,6 @@ if __name__ == '__main__':
     scheduler = Scheduler()
     scheduler.run()
 
-
-
-
-
-
-
-
-
-scheduler = Scheduler()
 
 
 
