@@ -6,11 +6,11 @@ import json
 import dill
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import socket
+from multiprocessing import Manager
 
 from gevent import monkey
 monkey.patch_all()
 from gevent.wsgi import WSGIServer
-
 
 
 class Worker(object):
@@ -35,7 +35,7 @@ class Worker(object):
     # Job tracker, list of dicts containing job_id and status
     job_queue = []
 
-    def __init__(self, address, port, check_rate=0.25, max_queue_size=50, n_procs=2, worker_name='brutus_jr'):
+    def __init__(self, scheduler_address, scheduler_port, check_rate=0.25, max_queue_size=50, n_procs=2, worker_name='brutus_jr'):
         """
         :param address:         str: Scheduler http/tcp address
         :param port:            str: Scheduler port
@@ -49,123 +49,51 @@ class Worker(object):
                                      suspected to be dead.
         :return:
         """
-        self.address = address
-        self.scheduler_port = port
+        self.scheduler_address = scheduler_address
+        self.scheduler_port = scheduler_port
         self.check_rate = check_rate
         self.max_queue_size = max_queue_size
         self.n_procs = n_procs
         self.worker_name = worker_name
 
 
-    def get_free_port(self):
-        """Get a free port"""
-        s = socket.socket()
-        s.bind(('', 0))
-        port = s.getsockname()[1]
-        s.close()
-        return port
-
-
-    def server(self):
-        """
-        Starts worker server
-        Used to receive jobs from server
-        """
-        app = Flask(__name__)
-
-        @app.route('/receive_job', methods=['POST'])
-        def receive_job():
-            """Receive job from server"""
-            job = request.files['job'].read()
-            job = dill.loads(job)  # Loaded job
-            self.job_queue.append(job)
-            print('Received and added job to queue: ', job.get('job_id'))
-
-        @app.route('/status_check', methods=['GET'])
-        def status_check():
-            """Respond to scheduler with current job(s) state"""
-            self.update_job_status_counts()  # Calculate the latest counts before sending.
-            data = {'success': True, 'worker_jobs': self.job_queue}
-            return json.dumps(data)
-
-        @app.route('/shutdown')
-        def shutdown():
-            self.shutdown = True
-
-        @app.route('/ping', methods=['GET'])
-        def ping():
-            """Check is server is alive"""
-            return json.dumps({'ping': 'pong'})
-
-        # Start the worker server.
-        self.server_port = self.get_free_port()
-        print('Worker thread starting server on port: {}'.format(self.server_port))
-        self.http_server = WSGIServer(('', self.server_port), application=app)
-        self.http_server.serve_forever()
-
-
-    def check_server(self, start=False):
-        """Makes /ping request on worker server and checks for response
-        Will optionally start the server"""
-
-        if start:
-            future_thread_pool = ThreadPoolExecutor(max_workers=2)
-            future_thread_pool.submit(self.server)
-            time.sleep(0.5)
-
-        print('Checking "{}" server is up...'.format(self.worker_name))
-        r = requests.get('http://{}:{}/ping'.format(self.address, self.server_port)).json()
-
-        if r.get('ping') == 'pong':
-            print('Worker server up! Registering with scheduler...')
-            response = requests.post(self.scheduler_url + '/register', json={'worker_name': self.worker_name,
-                                                                             'worker_port': self.server_port})
-            if response.ok:
-                print('Registered with scheduler!')
-                return True
-            else:
-                print('Unable to register with scheduler...shutting down')
-
-        else:
-            print('Scheduler non-responsive...shutting down.')
-
-        self.shutdown = True
-        return False
-
-
     @property
     def scheduler_url(self):
-        return 'http://{}:{}'.format(self.address, self.scheduler_port)
+        return 'http://{}:{}'.format(self.scheduler_address, self.scheduler_port)
 
 
     def work(self):
         """
         Performs the main working loop wrapped with ProcessPoolExecutor with basic logic.
         """
-        print('Worker "{}" starting with {} processes!'.format(self.worker_name, self.n_procs))
-        if not self.check_server(start=True):
-            self.http_server.stop()
-            return
+        print('Worker "{}" starting with {} processes!\nRegistering w/ scheduler.'
+              .format(self.worker_name, self.n_procs))
+        requests.post(self.scheduler_url + '/register', json={'worker_name': self.worker_name})
         print('Waiting for jobs...')
 
         with ProcessPoolExecutor(self.n_procs) as exc:
             while True:
 
-                if not self.job_queue:
+                # Update job status counts
+                self.update_job_status_counts()
+
+                if self.n_pending >= self.max_queue_size:
                     time.sleep(self.check_rate)
                     continue
 
-                if self.shutdown:
+                # Try to get a job from scheduler, but post current status as well
+                response = requests.post(self.scheduler_url + '/get_job', json={'worker_name': self.worker_name})
+
+                if response.content == b'no_job':
+                    time.sleep(self.check_rate)
+                elif response.content == b'shutdown':
                     break
-
-                job = self.job_queue.pop()
-                print('Processing job: ', job.get('job_id'))
-                job_id = job.get('job_id')
-                future = exc.submit(self.process_job, package=job)
-                self.futures.append((job_id, future))
-
-                # Update job status counts
-                self.update_job_status_counts()
+                else:
+                    _job = dill.loads(response.content)
+                    print('Processing job: {}'.format(_job.get('job_id')))
+                    future = exc.submit(self.process_job, package=response.content)
+                    self.futures.append((_job.get('job_id'), future))
+                    #self.process_job(package=response.content)
 
         print('Killing worker server...')
         self.http_server.stop()
@@ -177,13 +105,15 @@ class Worker(object):
         """Loads and executes the function given the package"""
 
         # Load bytes into pyobj...
-        package = dill.loads(package.content)
+        package = dill.loads(package)
         func = package.get('func')
         args = package.get('args')
         kwargs = package.get('kwargs')
 
         # Run the function
+        print('Executing function')
         result = func(*args, **kwargs)
+        print('result of function:  ', result)
         return result
 
 
@@ -214,6 +144,6 @@ class Worker(object):
 
 
 if __name__ == '__main__':
-    worker = Worker(address='localhost', port='4541')
+    worker = Worker(scheduler_address='localhost', scheduler_port='4541')
     worker.work()
 

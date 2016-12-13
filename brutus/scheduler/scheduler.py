@@ -1,7 +1,8 @@
 import json
-
+import socket
 import dill
-from flask import Flask, request
+from flask import Flask, request, send_file
+import io
 from gevent import monkey
 
 from brutus.scheduler.persistence.models import Job, Worker, db
@@ -18,6 +19,15 @@ class Scheduler(object):
     workers = []
     job_queue = []
     shutdown = False
+
+    def get_free_port(self):
+        """Get a free port"""
+        s = socket.socket()
+        s.bind(('', 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
 
     def scheduler_server(self):
         """
@@ -59,7 +69,6 @@ class Scheduler(object):
         def workers():
             """Return list of workers currently registered with scheduler"""
             worker_list = [{'worker_name': worker.name,
-                            'worker_address': '{}:{}'.format(worker.ip_address, worker.port),
                             'current_queue_size': worker.current_queue_size,
                             'max_queue_size': worker.max_queue_size
                             }
@@ -72,11 +81,8 @@ class Scheduler(object):
             """Workers register here"""
             data = request.get_json()
             worker_name = data.get('worker_name')
-            worker_port = data.get('worker_port')
-            worker = Worker.create(name=worker_name,
-                                   port=worker_port,
-                                   ip_address='127.0.0.1')
-            print('Registered new worker: {} on port: {}'.format(worker_name, worker_port))
+            Worker.create(name=worker_name)
+            print('Registered new worker: {}'.format(worker_name))
             return json.dumps({'success': True})
 
 
@@ -100,9 +106,25 @@ class Scheduler(object):
 
             saved_job = Job.create(job_id=_job.get('job_id'),
                                    job_package=job,
-                                   status='stored on scheduler')
+                                   status='pending_on_scheduler')
+
             print('Stored job w/ id: ', saved_job.job_id)
-            return json.dumps({'success': True, 'job_id': _job.get('job_id')})
+            return json.dumps({'success': True,
+                               'job_id': saved_job.job_id})
+
+
+        @app.route('/get_job', methods=['POST'])
+        def get_job():
+            worker = request.get_json().get('worker_name')
+            print('Received job request from: {}'.format(worker))
+            jobs_exists = Job.select().where(Job.status == 'pending_on_scheduler').count()
+            if jobs_exists:
+                job = Job.select().where(Job.status == 'pending_on_scheduler').order_by(Job.time_recv.asc()).limit(1).get()
+                job.status = 'sent_to_{}'.format(worker)
+                job.save()
+                job_ = io.BytesIO(job.job_package)
+                return send_file(job_)
+            return send_file(io.BytesIO(b'no_job'))
 
 
         @app.route('/shutdown')

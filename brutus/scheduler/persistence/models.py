@@ -28,8 +28,6 @@ class Worker(pw.Model):
         db_table = 'worker_table'
 
     name = pw.CharField(max_length=255, default='no_name')
-    ip_address = pw.CharField(max_length=255, default='127.0.0.1')
-    port = pw.IntegerField()
     current_queue_size = pw.IntegerField(default=0)
     max_queue_size = pw.IntegerField(default=50)
 
