@@ -1,15 +1,13 @@
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+import json
 
+import dill
+from flask import Flask, request
 from gevent import monkey
+
+from brutus.scheduler.persistence.models import Job, Worker, db
+
 monkey.patch_all()
 from gevent.wsgi import WSGIServer
-from flask import Flask, request, send_file
-import json
-import dill
-import io
-import time
-
-
 
 
 class Scheduler(object):
@@ -17,19 +15,9 @@ class Scheduler(object):
     http_server = None
     address = '127.0.0.1'
     port = 4541
-
-    class MiddleMan(object):
-        """
-        Used to communicate between Scheduler loop and scheduler server running in another
-        thread. Only attributes which need to be shared between Scheduler and the server need to be in here.
-        ie. app.route() functions found in scheduler_server()
-        """
-        workers = []
-        job_queue = []
-        shutdown = False
-
-
-    middleman = MiddleMan()
+    workers = []
+    job_queue = []
+    shutdown = False
 
     def scheduler_server(self):
         """
@@ -40,7 +28,6 @@ class Scheduler(object):
         # connect server's middleman to Scheduler().middleman instance
         # So server functions can modify attributes of middleman and Scheduler().run()
         # Will react to changes/jobs added.
-        self.middleman = middleman = self.middleman
 
         app = Flask(__name__)
 
@@ -49,17 +36,35 @@ class Scheduler(object):
             return json.dumps({'success': True})
 
 
+        @app.route('/job_status')
         @app.route('/job_status/<job_id>')
-        def job_status(job_id):
+        def job_status(job_id=None):
             """
             Return the status of the given job_id.
             """
-            return json.dumps({'success': False})
+            if job_id:
+                job = Job.get(Job.job_id == job_id)
+                return json.dumps({'success': False, 'status': job.status})
+
+            else:
+                jobs = [{'job_id': job.job_id,
+                         'time_requested': str(job.time_recv),
+                         'job_status': job.status
+                         }
+                        for job in Job.select()]
+                return json.dumps(jobs)
 
 
-        @app.route('/workers')
+        @app.route('/worker_status')
         def workers():
-            return json.dumps({'workers': middleman.workers})
+            """Return list of workers currently registered with scheduler"""
+            worker_list = [{'worker_name': worker.name,
+                            'worker_address': '{}:{}'.format(worker.ip_address, worker.port),
+                            'current_queue_size': worker.current_queue_size,
+                            'max_queue_size': worker.max_queue_size
+                            }
+                           for worker in Worker.select()]
+            return json.dumps(worker_list)
 
 
         @app.route('/register', methods=['POST'])
@@ -68,10 +73,9 @@ class Scheduler(object):
             data = request.get_json()
             worker_name = data.get('worker_name')
             worker_port = data.get('worker_port')
-            middleman.workers.append({'worker_name': worker_name,
-                                      'worker_port': worker_port,
-                                      'worker_ip': '127.0.0.1',
-                                      'jobs': []})
+            worker = Worker.create(name=worker_name,
+                                   port=worker_port,
+                                   ip_address='127.0.0.1')
             print('Registered new worker: {} on port: {}'.format(worker_name, worker_port))
             return json.dumps({'success': True})
 
@@ -92,21 +96,23 @@ class Scheduler(object):
             """
             job = request.files['job'].read()
             _job = dill.loads(job)  # Loaded job
-
             print('Adding job to queue - job_id: ', _job.get('job_id'))
-            middleman.job_queue.append({'job_id': _job.get('job_id'),
-                                        'status': 'pending_on_scheduler',
-                                        'worker': None,
-                                        'job': job})
-            print('Have {} jobs'.format(len(middleman.job_queue)))
+
+            saved_job = Job.create(job_id=_job.get('job_id'),
+                                   job_package=job,
+                                   status='stored on scheduler')
+            print('Stored job w/ id: ', saved_job.job_id)
             return json.dumps({'success': True, 'job_id': _job.get('job_id')})
 
 
         @app.route('/shutdown')
         def shutdown_workers():
             print('Shutting down...')
-            middleman.shutdown = True
             return 'shutting down cluster.'
+
+        db.connect()
+        db.drop_tables(models=[Job, Worker], safe=True)
+        db.create_tables(models=[Job, Worker], safe=True)
 
         # Safe to use self attributes now
         print('Starting scheduler on port {}'.format(self.port))
@@ -114,32 +120,13 @@ class Scheduler(object):
         self.http_server.serve_forever()
 
 
-    def start_scheduler_server(self):
-        exc = ProcessPoolExecutor(2)
-        self.server_process = exc.submit(self.scheduler_server)
-        return True
-
-
     def run(self):
 
-        print('Starting scheduler server...')
-        self.start_scheduler_server()
-        print('Server started!')
-
-        while True:
-
-            # If no workers, or anything in job queue, just wait.
-            if not (self.middleman.workers or self.middleman.job_queue):
-                time.sleep(1)
-
-            if self.middleman.shutdown:
-                print('Exiting Scheduler loop')
-                break
-
-            time.sleep(0.1)
+        self.scheduler_server()
 
         # Stop the scheduler server.
         self.http_server.stop()
+        db.close()
         print('Done.')
 
 
