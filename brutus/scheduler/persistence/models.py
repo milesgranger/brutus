@@ -18,6 +18,8 @@ class Job(pw.Model):
     job_id = pw.CharField(max_length=255, primary_key=True)
     job_package = pw.BlobField()  # Stores the whole package, which contains dill.dumps(dict) of args, kwargs, func, and job_id
     status = pw.CharField(max_length=255)
+    result = pw.BlobField(null=True)
+    exception = pw.BooleanField(default=False)
 
 
 class Worker(pw.Model):

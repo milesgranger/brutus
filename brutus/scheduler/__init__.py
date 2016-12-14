@@ -1,1 +1,1 @@
-from .scheduler import Scheduler
+from brutus.scheduler.scheduler import Scheduler

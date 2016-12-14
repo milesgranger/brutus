@@ -1,4 +1,4 @@
-
+import dill
 import requests
 import random
 import time
@@ -9,19 +9,40 @@ class JobConnection(object):
     Methods to query scheduler to see status, get results, or cancel job.
     """
 
+    _result = None
+    _status = None
+    _exception = None
+
     def __init__(self, job_id, scheduler_address):
         self.job_id = job_id
         self.scheduler_address = scheduler_address
 
 
+    @property
     def status(self):
         """
         Contacts scheduler to check status
         """
-        status = requests.get('http://{}/job_status/{}'.format(self.scheduler_address, self.job_id)).json()
-        print(status)
+
+        # Only update if the status is not complete
+        if self._status != 'complete':
+            status = requests.get('http://{}/job_status/{}'.format(self.scheduler_address, self.job_id)).json()
+            self._status = status.get('status')
+        return self._status
+
+    @property
+    def result(self):
+        if self._result is None and self.status == 'complete':
+            response = requests.get('http://{}/get_result/{}'.format(self.scheduler_address, self.job_id)).json()
+            self._result = response.get('result')
+            self._exception = response.get('exception')
+        return self._result
 
 
+    @property
+    def exception(self):
+        self.result
+        return self._exception
 
 
 def distribute(func=None, address='localhost:4541'):
@@ -59,18 +80,30 @@ def distribute(func=None, address='localhost:4541'):
         return Distribute
 
 
+def wait(job_connections):
+
+    job_connections = [r for r in job_connections]
+
+    while True:
+        if all([job.status == 'complete' for job in job_connections]):
+            return [job.result for job in job_connections]
+        else:
+            time.sleep(0.1)
+
+
 if __name__ == '__main__':
 
     @distribute
     def adder(x):
         time.sleep(random.random())
-        return x + 3
+        return x
 
-    result = map(adder, [1, 2, 3, 4, 5, 6])
-    results = [r for r in result]
+    results = map(adder, range(50))
 
-    for i in range(5):
-        print('\n\nChecking status....\n')
-        for r in results:
-            print(r, r.status())
-        time.sleep(2)
+    print('Results: ', results)
+
+    #print([job.status() for job in results])
+
+    print('Waiting for results...')
+    results = wait(results)
+    print('finished: ', results)

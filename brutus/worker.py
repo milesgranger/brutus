@@ -28,10 +28,6 @@ class Worker(object):
     n_complete = 0
     n_pending = 0
 
-    # Worker server
-    http_server = None
-    server_port = None
-
     # Job tracker, list of dicts containing job_id and status
     job_queue = []
 
@@ -81,8 +77,9 @@ class Worker(object):
                     time.sleep(self.check_rate)
                     continue
 
-                # Try to get a job from scheduler, but post current status as well
-                response = requests.post(self.scheduler_url + '/get_job', json={'worker_name': self.worker_name})
+                # Try to get a job from scheduler, but post current status of jobs as well
+                response = requests.post(self.scheduler_url + '/fetch_job', json={'worker_name': self.worker_name,
+                                                                                  'job_statuses': self.job_queue})
 
                 if response.content == b'no_job':
                     time.sleep(self.check_rate)
@@ -93,11 +90,6 @@ class Worker(object):
                     print('Processing job: {}'.format(_job.get('job_id')))
                     future = exc.submit(self.process_job, package=response.content)
                     self.futures.append((_job.get('job_id'), future))
-                    #self.process_job(package=response.content)
-
-        print('Killing worker server...')
-        self.http_server.stop()
-        print('Killed.')
 
         return
 
@@ -112,9 +104,22 @@ class Worker(object):
 
         # Run the function
         print('Executing function')
-        result = func(*args, **kwargs)
+        try:
+            result = func(*args, **kwargs)
+            result = {'exception': False, 'result': result}
+        except Exception as exc:
+            result = {'exception': True, 'result': '{}'.format(exc)}
         print('result of function:  ', result)
         return result
+
+
+    def send_job_result(self, job_id, status, result):
+        package = dill.dumps({'job_id': job_id,
+                              'status': status,
+                              'result': result.get('result'),
+                              'exception': result.get('exception')
+                              })
+        requests.post(self.scheduler_url + '/submit_job_result', files={'package': package})
 
 
     def update_job_status_counts(self):
@@ -123,10 +128,16 @@ class Worker(object):
         """
         self.job_queue = []
         self.n_pending, self.n_running, self.n_complete = 0, 0, 0
-        for job_id, future in self.futures:
+        for i, (job_id, future) in enumerate(self.futures):
             if future.done():
-                status = {'status': 'complete_on_worker'}
-                self.n_complete += 1
+
+                # Send the result of this right away...
+                self.send_job_result(job_id, 'complete', future.result())
+
+                # Remove from futures list, and continue; thus not appending it to job_queue
+                self.futures.pop(i)
+                continue
+
             elif future.running():
                 status = {'status': 'running_on_worker'}
                 self.n_running += 1
