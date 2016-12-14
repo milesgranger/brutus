@@ -3,12 +3,32 @@ import requests
 import random
 import time
 
+
+def wait(job_connections):
+    """wait for job connections, and return actual result"""
+    single_val = False
+
+    if type(job_connections) == map:
+        job_connections = [r for r in job_connections]
+
+    elif type(job_connections) != list:
+        single_val = True
+        job_connections = [job_connections]
+
+    while True:
+        if all([job.status == 'complete' for job in job_connections]):
+            if single_val:
+                return job_connections[0].result
+            return [job.result for job in job_connections]
+        else:
+            time.sleep(0.1)
+
+
 class JobConnection(object):
     """
     Instance with a connection specific to a job_id
     Methods to query scheduler to see status, get results, or cancel job.
     """
-
     _result = None
     _status = None
     _exception = None
@@ -23,7 +43,6 @@ class JobConnection(object):
         """
         Contacts scheduler to check status
         """
-
         # Only update if the status is not complete
         if self._status != 'complete':
             status = requests.get('http://{}/job_status/{}'.format(self.scheduler_address, self.job_id)).json()
@@ -65,6 +84,10 @@ def distribute(func=None, address='localhost:4541'):
 
         def __call__(self, *args, **kwargs):
 
+            # Check all args are not JobConnections, wait if so
+            args = [arg if 'JobConnection' not in str(type(arg)) else wait(arg) for arg in args]
+            kwargs = {kw: arg if 'JobConnection' not in str(type(arg)) else wait(arg) for kw, arg in kwargs.items()}
+
             job = dict(job_id='id-{}'.format(random.random()).replace('.', ''),
                        func=self.func,
                        args=args,
@@ -80,17 +103,6 @@ def distribute(func=None, address='localhost:4541'):
         return Distribute
 
 
-def wait(job_connections):
-
-    job_connections = [r for r in job_connections]
-
-    while True:
-        if all([job.status == 'complete' for job in job_connections]):
-            return [job.result for job in job_connections]
-        else:
-            time.sleep(0.1)
-
-
 if __name__ == '__main__':
 
     @distribute
@@ -98,12 +110,12 @@ if __name__ == '__main__':
         time.sleep(random.random())
         return x
 
-    results = map(adder, range(50))
+    @distribute
+    def times_2(x):
+        time.sleep(random.random())
+        return x * 2
+
+    results = map(adder, range(5))
+    results = map(times_2, results)
 
     print('Results: ', results)
-
-    #print([job.status() for job in results])
-
-    print('Waiting for results...')
-    results = wait(results)
-    print('finished: ', results)
