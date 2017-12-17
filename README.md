@@ -1,25 +1,42 @@
 # brutus
-HTTP/TCP Distributed and Persisted Computing Framework in Python
+HTTP/TCP Distributed Computing Framework in Python  
+using Amazon Lambda functions
 
 It's simple and it's powerful.
 
 --- 
 
-Working prototype, still under active development. 
+Working prototype, still under development. 
 Not suitable for anything other than exploring, making suggestions/issues.
 
 ---
 
-### Use
+### Is this package a good fit for you?
 
-Uses a central Flask/Gevent Server which is contacted by hungry worker processes looking for jobs.
-Functions and their args/kwargs are stored in a sqlite database on the scheduler, and when worker processes contact server
-they are given a job. 
+Uses Amazon Lambda to distribute workloads  
 
-```
-from brutus import distribute, wait
+- Benefits
+    - Serverless workers
+    - Pay for what you use
+    - **Extremely** scalable!
+    
+- Down sides:
+    - Changing local env requires updating remote lambda env
+    - Long running functions (> ~3-4 mins) are not suitable
+    - Lots of I/O http/tcp traffic
+    - I like Anaconda as much as the next guy, but as of now  
+      it is not supported. All packages must be `pip` installable.
 
-# Assuming localhost:4541 scheduler..
+```python
+from brutus import distribute, Client
+
+# max of 1000 simultaneous Lambda functions,
+# and ensure local conda env matches remote lambda env
+Client(max_workers=1000, 
+       update_env=True,
+       requirements=['pandas=20.1', 'numpy=1.13']  # or file path to pip freeze file
+       )
+
 @distribute
 def adder(x):
     time.sleep(random.random())
@@ -30,13 +47,12 @@ def times_2(x):
     time.sleep(random.random())
     return x * 2
     
-# Use different scheduler
-@distribute(address='some_ip_address:4541')
+@distribute
 def divide(x):
     time.sleep(random.random())
     return x / 2.
 
 results = map(adder, range(5))
 results = map(times_2, results)
-results = wait(map(divide, results))
+results = map(divide, results))
 ```
