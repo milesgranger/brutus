@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 
 
+import boto3
+
+
 class LambdaManagement:
 
     def check_aws_config(self):

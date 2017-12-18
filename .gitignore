@@ -4,3 +4,4 @@ brutus/scheduler/__pycache__/
 brutus/scheduler/server/__pycache__/
 brutus/scheduler/persistence/__pycache__/
 brutus/lambda_env/*
+.ipynb_checkpoints/

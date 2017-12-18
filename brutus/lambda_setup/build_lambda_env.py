@@ -30,14 +30,15 @@ class LambdaEnvBuilder:
         else:
             print('Clearning lambda_env target dir.')
             container = client.containers.run('milesg/brutus', 'rm -rf /lambda_env',
-                                  detach=True,
-                                  auto_remove=True,
-                                  remove=True,
-                                  read_only=False,
-                                  volumes={LAMBDA_ENV: {'bind': '/lambda_env', 'mode': 'rw'}}
-                                  )
-            [line for line in container.logs(stream=True)]
-
+                                              detach=True,
+                                              auto_remove=True,
+                                              remove=True,
+                                              read_only=False,
+                                              volumes={LAMBDA_ENV: {'bind': '/lambda_env', 'mode': 'rw'}}
+                                              )
+            for line in container.logs(stream=True):
+                pass
+                #print(line.strip())
             print('done.')
 
     @staticmethod
@@ -94,4 +95,4 @@ class LambdaEnvBuilder:
 
 
 if __name__ == '__main__':
-    LambdaEnvBuilder.build(packages_or_file=['cloudpickle'])
+    LambdaEnvBuilder.build(packages_or_file=['cloudpickle', 'numpy'])
