@@ -4,6 +4,7 @@ import os
 import shutil
 import docker
 
+from typing import Union
 from brutus.settings import LAMBDA_ENV
 
 
@@ -13,15 +14,15 @@ class LambdaEnvBuilder:
     output built files to ../lambda_env and final packaged env to ../lambda_env/lambda_env.zip
 
     Example
-    >>> LambdaEnvBuilder.build(packages_or_file=['pandas', 'numpy'])
+    >>> LambdaEnvBuilder.build(requirements=['pandas', 'numpy'])
     """
 
     @staticmethod
-    def get_docker_client():
+    def _get_docker_client() -> docker.DockerClient:
         return docker.from_env()
 
     @staticmethod
-    def clear_lambda_target_dir(client):
+    def _clear_lambda_target_dir(client) -> None:
         """
         Either make a directory at LAMBDA_ENV or clear it.
         """
@@ -38,11 +39,10 @@ class LambdaEnvBuilder:
                                               )
             for line in container.logs(stream=True):
                 pass
-                #print(line.strip())
             print('done.')
 
     @staticmethod
-    def make_or_move_requirements(packages_or_file):
+    def _make_or_move_requirements(packages_or_file: Union[str, list]) -> None:
         """
         Ensure there is a file of python package requirements in the LAMBDA_ENV directory
         to ensure we can use it to install packages from
@@ -54,7 +54,6 @@ class LambdaEnvBuilder:
                     f.write('{}\n'.format(package))
         elif isinstance(packages_or_file, str) and os.path.exists(packages_or_file):
             shutil.copyfile(packages_or_file, os.path.join(LAMBDA_ENV, 'requirements.txt'))
-
         else:
             raise ValueError('Do not know how to make requirements.txt out of type: {} with values: {}\n' \
                              'Should be either a list of packages or a file path to file created from "pip freeze"'
@@ -62,14 +61,25 @@ class LambdaEnvBuilder:
                              )
 
     @classmethod
-    def build(cls, packages_or_file):
+    def build(cls, requirements: Union[str, list]) -> None:
+        """
+        Compile Python requirements on an Amazon Linux container to guarantee they will be valid within the Lambda
+        environment.
 
-        client = cls.get_docker_client()
+        Parameters
+        ----------
+        requirements -  Union[str, List[str]]: file path to a pip freeze file, or a list of packages
 
-        cls.clear_lambda_target_dir(client)
+        Returns
+        -------
+        None - Deposits a zipped file of the compiled packages and lambda handler function into this package's lambda_env directory
+        """
+        client = cls._get_docker_client()
+
+        cls._clear_lambda_target_dir(client)
 
         # Copy or create a requirements.txt into the lambda env dir
-        cls.make_or_move_requirements(packages_or_file)
+        cls._make_or_move_requirements(requirements)
 
         # Copy the lambda handler file into the lambda env dir
         shutil.copyfile(os.path.join(os.path.dirname(__file__), '..', 'lambda_handler.py'),
@@ -95,4 +105,4 @@ class LambdaEnvBuilder:
 
 
 if __name__ == '__main__':
-    LambdaEnvBuilder.build(packages_or_file=['cloudpickle', 'numpy'])
+    LambdaEnvBuilder.build(requirements=['cloudpickle', 'numpy'])

@@ -11,6 +11,16 @@ Not suitable for anything other than exploring, making suggestions/issues.
 
 ---
 
+### Requirements  
+- Python 3.6 (Lambda is either 2.7 or 3.6)  
+  you can attempt to use a different local version, but the lambda version  
+  will be Python 3.6
+  
+- Docker installed with ability to write to this packages location.  
+  (Packages are built within a Amazon Linux container, required by Lambda)
+
+---
+
 ### Is this package a good fit for you?
 
 Uses Amazon Lambda to distribute workloads  
@@ -32,8 +42,7 @@ from brutus import distribute, Client
 
 # max of 1000 simultaneous Lambda functions,
 # and ensure local conda env matches remote lambda env
-Client(max_workers=1000, 
-       update_env=True,
+Client(max_workers=1000,
        requirements=['pandas=20.1', 'numpy=1.13']  # or file path to pip freeze file
        )
 
