@@ -72,16 +72,16 @@ class LambdaEnvBuilder:
 
         Returns
         -------
-        None - Deposits a zipped file of the compiled packages and lambda handler function into this package's lambda_env directory
+        None - Deposits a zipped file of the compiled packages and lambda_backend handler function into this package's lambda_env directory
         """
         client = cls._get_docker_client()
 
         cls._clear_lambda_target_dir(client)
 
-        # Copy or create a requirements.txt into the lambda env dir
+        # Copy or create a requirements.txt into the lambda_backend env dir
         cls._make_or_move_requirements(requirements)
 
-        # Copy the lambda handler file into the lambda env dir
+        # Copy the lambda_backend handler file into the lambda_backend env dir
         shutil.copyfile(os.path.join(os.path.dirname(__file__), '..', 'lambda_handler.py'),
                         os.path.join(LAMBDA_ENV, 'lambda_handler.py')
                         )

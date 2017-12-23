@@ -12,7 +12,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - lambda.amazonaws.com
+                - lambda_backend.amazonaws.com
                 - apigateway.amazonaws.com
             Action:
               - "sts:AssumeRole"
@@ -38,7 +38,7 @@ Resources:
             Resource: "*"
 
           - Effect: Allow
-            Action: lambda:*
+            Action: lambda_backend:*
             Resource: "*"
 
           - Effect: Allow
@@ -83,7 +83,7 @@ Resources:
       - LambdaFunctionBrutus
       - ApiGatewayRestApi
     Properties:
-      Action: lambda:InvokeFunction
+      Action: lambda_backend:InvokeFunction
       FunctionName: !Ref LambdaFunctionBrutus
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub
@@ -131,7 +131,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         PassthroughBehavior: WHEN_NO_MATCH
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionBrutus.Arn}/invocations
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda_backend:path/2015-03-31/functions/${LambdaFunctionBrutus.Arn}/invocations
 
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment

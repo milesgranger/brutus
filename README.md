@@ -41,7 +41,7 @@ Uses Amazon Lambda to distribute workloads
 from brutus import distribute, Client
 
 # max of 1000 simultaneous Lambda functions,
-# and ensure local conda env matches remote lambda env
+lambda_backend
 Client(max_workers=1000,
        requirements=['pandas=20.1', 'numpy=1.13']  # or file path to pip freeze file
        )

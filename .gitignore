@@ -3,10 +3,10 @@ brutus/__pycache__/
 brutus/scheduler/__pycache__/
 brutus/scheduler/server/__pycache__/
 brutus/scheduler/persistence/__pycache__/
-brutus/lambda_env/*
+brutus/aws/lambda_backend/lambda_env/*
 .ipynb_checkpoints/
 brutus/__init__.pyc
-brutus/lambda_setup/__pycache__/
+brutus/aws/lambda_backend/lambda_setup/__pycache__/
 
 
 __pycache*

@@ -1,32 +1,24 @@
 # -*- coding: utf-8 -*-
 
-import cloudpickle
+from functools import wraps
+from brutus.base import BrutusBackend
 
 
-def distribute(func=None):
+def distribute(func=None, backend: BrutusBackend=None):
     """
-    Implement as decorator above any cloudpickle-able function
+    decorator above function to compute using a brutus backend object
     """
 
     class Distribute:
 
-        def __init__(self, func):
+        def __init__(self, func: callable=None):
             self.func = func
 
         def __call__(self, *args, **kwargs):
             """
             Execute decorated function in remote Lambda function
             """
-            job = dict(
-                func=func,
-                args=args,
-                kwargs=kwargs
-            )
-
-            job = cloudpickle.dumps(job)
-            # TODO: implement sending job off to lambda function and waiting for result
-
-            return self.func(*args, **kwargs)
+            return backend.dispatch(self.func, *args, **kwargs)
 
     if callable(func):
         return Distribute(func)
