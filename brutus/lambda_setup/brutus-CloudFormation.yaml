@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Setup Brutus Lambda Function and required resources
+
+Resources:
+
+  BrutusRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - apigateway.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      RoleName: BrutusRole
+
+  BrutusRolePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Policy for the BrutusRole. Part of the Python 'brutus' lib, created by CloudFormation
+      ManagedPolicyName: BrutusRolePolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+
+          - Effect: Allow
+            Action: execute-api:Invoke
+            Resource: arn:aws:execute-api:*
+
+          - Effect: Allow
+            Action: "sts:AssumeRole"
+            Resource: "*"
+
+          - Effect: Allow
+            Action: lambda:*
+            Resource: "*"
+
+          - Effect: Allow
+            Action: apigateway:*
+            Resource: "*"
+
+          - Effect: Allow
+            Action: logs:*
+            Resource: "*"
+
+  LambdaFunctionBrutus:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - BrutusRole
+    Properties:
+      FunctionName: Brutus-Lambda-Function
+      Description: Function for the Python 'brutus' framework, created by CloudFormation
+      Role: !GetAtt BrutusRole.Arn
+      Handler: index.handler
+      MemorySize: 3000
+      Runtime: python3.6
+      Timeout: 300
+      Code:
+        ZipFile: |
+          # -*- coding: utf-8 -*-
+
+          import json
+
+          def handler(event, context):
+              """
+              Execute pickled function in remote Lambda environment using all globals from source environment
+              """
+
+              print('Passed event: {}'.format(event))
+              print('Passed context: {}'.format(context))
+
+              return {'statusCode': 200, 'body': json.dumps({'success': True}), 'isBase64Encoded': False}
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - LambdaFunctionBrutus
+      - ApiGatewayRestApi
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LambdaFunctionBrutus
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub
+        - arn:aws:execute-api:${region}:${accountId}:${gateway}/*
+        - {
+            region: !Ref "AWS::Region",
+            accountId: !Ref "AWS::AccountId",
+            gateway: !Ref ApiGatewayRestApi
+        }
+
+  ApiGatewayRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      BinaryMediaTypes:
+        - application/octet-stream
+      Description: Brutus API Gateway - CF
+      Name: Brutus API Gateway
+      EndpointConfiguration:
+        Types:
+          - EDGE
+
+  ApiGatewayResourceProxy:
+    Type: AWS::ApiGateway::Resource
+    DependsOn:
+      - ApiGatewayRestApi
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ParentId: !GetAtt ApiGatewayRestApi.RootResourceId
+      PathPart: "brutus"
+
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    DependsOn:
+      - LambdaFunctionBrutus
+      - LambdaPermission
+      - ApiGatewayRestApi
+      - ApiGatewayResourceProxy
+    Properties:
+      ApiKeyRequired: false
+      RestApiId: !Ref ApiGatewayRestApi
+      ResourceId: !Ref ApiGatewayResourceProxy
+      HttpMethod: ANY
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        PassthroughBehavior: WHEN_NO_MATCH
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionBrutus.Arn}/invocations
+
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ApiGatewayMethod
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      Description: Brutus Lambda Proxy Deployment
+      StageName: BrutusDeploymentStage
+
+  ApiGatewayModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      RestApiId: !Ref ApiGatewayRestApi
+      ContentType: "application/json"
+      Description: Schema for Brutus
+      Name: BrutusSchema
+      Schema: {}
+
+  ApiGatewayStage:
+    Type: AWS::ApiGateway::Stage
+    DependsOn:
+      - ApiGatewayDeployment
+      - ApiGatewayRestApi
+    Properties:
+      StageName: BrutusProductionStage
+      Description: Brutus Production Stage
+      RestApiId: !Ref ApiGatewayRestApi
+      DeploymentId: !Ref ApiGatewayDeployment
+      MethodSettings:
+        - HttpMethod: POST
+          ResourcePath: "/*"

@@ -94,7 +94,7 @@ class LambdaEnvBuilder:
                                           volumes={LAMBDA_ENV: {'bind': '/lambda_env', 'mode': 'rw'}}
                                           )
 
-        print('Building environment on Amazon Linux container...')
+        print('Building environment in Amazon Linux container...')
         for line in container.logs(stream=True):
             print(line.strip().decode('utf-8'))
 
