@@ -4,7 +4,7 @@ import os
 import shutil
 import docker
 
-from typing import Union
+from typing import Union, Iterable
 from brutus.settings import LAMBDA_ENV
 
 
@@ -61,7 +61,7 @@ class LambdaEnvBuilder:
                              )
 
     @classmethod
-    def build(cls, requirements: Union[str, list]) -> None:
+    def build(cls, requirements: Union[str, Iterable[str]]) -> None:
         """
         Compile Python requirements on an Amazon Linux container to guarantee they will be valid within the Lambda
         environment.
@@ -82,7 +82,7 @@ class LambdaEnvBuilder:
         cls._make_or_move_requirements(requirements)
 
         # Copy the lambda_backend handler file into the lambda_backend env dir
-        shutil.copyfile(os.path.join(os.path.dirname(__file__), '..', 'lambda_handler.py'),
+        shutil.copyfile(os.path.join(os.path.dirname(__file__), 'lambda_handler.py'),
                         os.path.join(LAMBDA_ENV, 'lambda_handler.py')
                         )
 

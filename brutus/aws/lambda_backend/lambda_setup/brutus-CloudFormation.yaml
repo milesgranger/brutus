@@ -1,5 +1,22 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Setup Brutus Lambda Function and required resources
+Description: Setup a Brutus Lambda Function and required resources
+
+
+Parameters:
+
+  FunctionNameParameter:
+    Type: String
+    Default: Brutus-Default-Function
+    Description: Unique name for Brutus function.
+
+  PythonRuntimeParameter:
+    Type: String
+    Default: python3.6
+    Description: Python runtime to use for Lambda Function
+    AllowedValues:
+      - python3.6
+      - python2.7
+
 
 Resources:
 
@@ -12,7 +29,7 @@ Resources:
           - Effect: Allow
             Principal:
               Service:
-                - lambda_backend.amazonaws.com
+                - lambda.amazonaws.com
                 - apigateway.amazonaws.com
             Action:
               - "sts:AssumeRole"
@@ -38,7 +55,7 @@ Resources:
             Resource: "*"
 
           - Effect: Allow
-            Action: lambda_backend:*
+            Action: lambda:*
             Resource: "*"
 
           - Effect: Allow
@@ -54,12 +71,12 @@ Resources:
     DependsOn:
       - BrutusRole
     Properties:
-      FunctionName: Brutus-Lambda-Function
+      FunctionName: !Ref FunctionNameParameter
       Description: Function for the Python 'brutus' framework, created by CloudFormation
       Role: !GetAtt BrutusRole.Arn
       Handler: index.handler
       MemorySize: 3000
-      Runtime: python3.6
+      Runtime: !Ref PythonRuntimeParameter
       Timeout: 300
       Code:
         ZipFile: |
@@ -83,7 +100,7 @@ Resources:
       - LambdaFunctionBrutus
       - ApiGatewayRestApi
     Properties:
-      Action: lambda_backend:InvokeFunction
+      Action: lambda:InvokeFunction
       FunctionName: !Ref LambdaFunctionBrutus
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub
@@ -131,7 +148,7 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         PassthroughBehavior: WHEN_NO_MATCH
-        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda_backend:path/2015-03-31/functions/${LambdaFunctionBrutus.Arn}/invocations
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFunctionBrutus.Arn}/invocations
 
   ApiGatewayDeployment:
     Type: AWS::ApiGateway::Deployment

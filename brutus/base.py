@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import abc
+from typing import Iterable
 
 
 class BrutusBackend:
@@ -9,12 +10,15 @@ class BrutusBackend:
     """
 
     @abc.abstractmethod
-    def dispatch(self, func: callable, *args, **kwargs):
+    def submit(self, func: callable, *args, **kwargs):
         """
-        Method which sends function and arguments off to get computed
-        and waits for the response
-
-        typically call self.func(*args, **kwargs) remotely
+        Submit one function call
         """
         ...
 
+    @abc.abstractmethod
+    def map(self, func: callable, iter: Iterable):
+        """
+        Map an iterable over a function
+        """
+        ...
