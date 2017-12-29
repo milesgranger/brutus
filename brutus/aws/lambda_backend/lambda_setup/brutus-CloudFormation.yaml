@@ -115,7 +115,7 @@ Resources:
     Type: AWS::ApiGateway::RestApi
     Properties:
       BinaryMediaTypes:
-        - application/octet-stream
+        - "*/*"
       Description: Brutus API Gateway - CF
       Name: Brutus API Gateway
       EndpointConfiguration:
@@ -163,7 +163,7 @@ Resources:
     Type: AWS::ApiGateway::Model
     Properties:
       RestApiId: !Ref ApiGatewayRestApi
-      ContentType: "application/json"
+      ContentType: "application/octet-stream"
       Description: Schema for Brutus
       Name: BrutusSchema
       Schema: {}

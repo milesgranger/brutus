@@ -26,7 +26,6 @@ class LambdaSetup:
         self.stack_name = None
         self.function_name = function_name
         self.boto3_session = boto3_session
-        self.api_gateway_endpoint = ''
         self.cloudformation_template = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                     'lambda_setup',
                                                     'brutus-CloudFormation.yaml')
@@ -169,7 +168,7 @@ class Lambda(LambdaSetup, BrutusBackend):
         )
         job = cloudpickle.dumps(job)
         with ThreadPoolExecutor(max_workers=2) as executor:
-            future = executor.submit(requests.post, url=self.api_gateway_endpoint, data={'job': job}, timeout=320)
+            future = executor.submit(requests.post, url=self._api_endpoint, data={'job': job}, timeout=320)
         return future
 
     def map(self, func: callable, iter: Iterable):
@@ -201,6 +200,7 @@ class Lambda(LambdaSetup, BrutusBackend):
         LambdaEnvBuilder.build(requirements=python_packages)
 
         # Update function with current environment
+
 
         return creator
 
